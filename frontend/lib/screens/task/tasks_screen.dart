@@ -3,7 +3,9 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/app_colors.dart';
-import '../../models/task.dart';
+import '../../data/models/task_model.dart';
+import '../../domain/entities/task.dart' as domain;
+import '../../services/task_service.dart';
 
 class TasksPage extends StatefulWidget {
   const TasksPage({Key? key}) : super(key: key);
@@ -20,44 +22,27 @@ class _TasksPageState extends State<TasksPage> with TickerProviderStateMixin {
   late AnimationController _fadeController;
   late Animation<double> _fadeAnimation;
 
-  final List<Task> _tasks = [
-    Task(
-      title: "Take out trash",
-      description: "Empty all bins and take to curb",
-      priority: Priority.high,
-      assignedTo: "John Doe",
-      dueDate: DateTime(2025, 7, 1),
-      completed: false,
-    ),
-    Task(
-      title: "Buy groceries",
-      description: "Milk, eggs, bread, and vegetables",
-      priority: Priority.medium,
-      assignedTo: "Sarah Johnson",
-      dueDate: DateTime.now(),
-      completed: false,
-    ),
-    Task(
-      title: "Clean kitchen",
-      description: "Wipe counters, load dishwasher",
-      priority: Priority.low,
-      assignedTo: "Sarah Johnson",
-      dueDate: DateTime(2025, 6, 29),
-      completed: true,
-    ),
-    Task(
-      title: "Pay internet bill",
-      description: "Monthly internet payment",
-      priority: Priority.high,
-      assignedTo: "Mike Chen",
-      dueDate: DateTime(2025, 7, 1),
-      completed: false,
-    ),
-  ];
+  final TaskService _taskService = TaskService();
+
+  List<domain.Task> _tasks = [];
+
+  // Add controllers and state for add task modal
+  final TextEditingController _titleController = TextEditingController();
+  final TextEditingController _descriptionController = TextEditingController();
+  domain.TaskPriority _selectedPriority = domain.TaskPriority.low;
+  DateTime? _selectedDueDate;
+
+  // Add state for editing
+  domain.Task? _editingTask;
+  final TextEditingController _editTitleController = TextEditingController();
+  final TextEditingController _editDescriptionController = TextEditingController();
+  domain.TaskPriority _editSelectedPriority = domain.TaskPriority.low;
+  DateTime? _editSelectedDueDate;
 
   @override
   void initState() {
     super.initState();
+    _loadTasks();
 
     _fadeController = AnimationController(
       duration: const Duration(milliseconds: 800),
@@ -75,9 +60,26 @@ class _TasksPageState extends State<TasksPage> with TickerProviderStateMixin {
     _fadeController.forward();
   }
 
+  Future<void> _loadTasks() async {
+    try {
+      final tasksData = await _taskService.listGroupTasks();
+      setState(() {
+        _tasks = tasksData.map((taskJson) => TaskModel.fromJson(taskJson).toEntity()).toList();
+      });
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to load tasks: $e')),
+      );
+    }
+  }
+
   @override
   void dispose() {
     _fadeController.dispose();
+    _titleController.dispose();
+    _descriptionController.dispose();
+    _editTitleController.dispose();
+    _editDescriptionController.dispose();
     super.dispose();
   }
 
@@ -91,10 +93,7 @@ class _TasksPageState extends State<TasksPage> with TickerProviderStateMixin {
             opacity: _fadeAnimation,
             child: Column(
               children: [
-                // Header Section - Matches HomePage style
                 _buildHeader(),
-
-                // Main Content
                 Expanded(
                   child: SingleChildScrollView(
                     physics: const BouncingScrollPhysics(),
@@ -103,12 +102,8 @@ class _TasksPageState extends State<TasksPage> with TickerProviderStateMixin {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // Task Tabs - Animated like HomePage stats
                           _buildTaskTabs(),
-
                           const SizedBox(height: 24),
-
-                          // Task List - Animated like HomePage recent activity
                           _buildTaskList(),
                         ],
                       ),
@@ -121,14 +116,10 @@ class _TasksPageState extends State<TasksPage> with TickerProviderStateMixin {
           if (_showAddTask) _buildAddTaskModal(),
         ],
       ),
-
-      // Bottom Navigation - Matches HomePage exactly
       bottomNavigationBar: _buildBottomNavigation(),
-
-      // Add Task Button
       floatingActionButton: FloatingActionButton(
         backgroundColor: AppColors.primaryOrange,
-        child: const Icon(Icons.add, color: AppColors.white),
+        child: const Icon(Icons.add, color: Colors.white),
         onPressed: () => setState(() => _showAddTask = true),
       ),
     );
@@ -149,7 +140,6 @@ class _TasksPageState extends State<TasksPage> with TickerProviderStateMixin {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              // Back Button and Title
               Row(
                 children: [
                   IconButton(
@@ -167,11 +157,8 @@ class _TasksPageState extends State<TasksPage> with TickerProviderStateMixin {
                   ),
                 ],
               ),
-
-              // Right side - Matches HomePage
               Row(
                 children: [
-                  // Notification Icon with Badge
                   Stack(
                     children: [
                       Container(
@@ -206,10 +193,7 @@ class _TasksPageState extends State<TasksPage> with TickerProviderStateMixin {
                       ),
                     ],
                   ),
-
                   const SizedBox(width: 12),
-
-                  // User Avatar - Matches HomePage
                   Container(
                     width: 40,
                     height: 40,
@@ -332,9 +316,9 @@ class _TasksPageState extends State<TasksPage> with TickerProviderStateMixin {
       if (_selectedTab == 0) {
         return true;
       } else if (_selectedTab == 1) {
-        return !task.completed;
+        return task.status != domain.TaskStatus.completed;
       } else {
-        return task.completed;
+        return task.status == domain.TaskStatus.completed;
       }
     }).toList();
 
@@ -359,16 +343,16 @@ class _TasksPageState extends State<TasksPage> with TickerProviderStateMixin {
     );
   }
 
-  Widget _buildTaskCard(Task task, int delay) {
+  Widget _buildTaskCard(domain.Task task, int delay) {
     Color priorityColor;
     switch (task.priority) {
-      case Priority.high:
+      case domain.TaskPriority.high:
         priorityColor = AppColors.primaryOrange;
         break;
-      case Priority.medium:
+      case domain.TaskPriority.medium:
         priorityColor = Colors.amber;
         break;
-      case Priority.low:
+      case domain.TaskPriority.low:
         priorityColor = Colors.green;
         break;
     }
@@ -410,8 +394,8 @@ class _TasksPageState extends State<TasksPage> with TickerProviderStateMixin {
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
                               color: AppColors.primaryBlue,
-                              decoration: task.completed 
-                                  ? TextDecoration.lineThrough 
+                              decoration: task.status == domain.TaskStatus.completed
+                                  ? TextDecoration.lineThrough
                                   : TextDecoration.none,
                             ),
                           ),
@@ -426,7 +410,7 @@ class _TasksPageState extends State<TasksPage> with TickerProviderStateMixin {
                               color: priorityColor.withOpacity(0.3)),
                           ),
                           child: Text(
-                            task.priority.toString().split('.').last,
+                            task.priority.toString().split('.').last.capitalize(),
                             style: TextStyle(
                               color: priorityColor,
                               fontWeight: FontWeight.bold,
@@ -434,54 +418,96 @@ class _TasksPageState extends State<TasksPage> with TickerProviderStateMixin {
                             ),
                           ),
                         ),
+                        IconButton(
+                          icon: const Icon(Icons.edit, color: Colors.blue),
+                          tooltip: 'Edit Task',
+                          onPressed: () {
+                            setState(() {
+                              _editingTask = task;
+                              _editTitleController.text = task.title;
+                              _editDescriptionController.text = task.description ?? '';
+                              _editSelectedPriority = task.priority;
+                              _editSelectedDueDate = task.dueDate;
+                            });
+                            showDialog(
+                              context: context,
+                              builder: (context) => _buildEditTaskModal(),
+                            ).then((_) {
+                              setState(() {
+                                _editingTask = null;
+                              });
+                            });
+                          },
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.delete_outline, color: Colors.red),
+                          tooltip: 'Delete Task',
+                          onPressed: () async {
+                            final confirm = await showDialog<bool>(
+                              context: context,
+                              builder: (context) => AlertDialog(
+                                title: const Text('Delete Task'),
+                                content: const Text('Are you sure you want to delete this task?'),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () => Navigator.of(context).pop(false),
+                                    child: const Text('Cancel'),
+                                  ),
+                                  TextButton(
+                                    onPressed: () => Navigator.of(context).pop(true),
+                                    child: const Text('Delete', style: TextStyle(color: Colors.red)),
+                                  ),
+                                ],
+                              ),
+                            );
+                            if (confirm == true) {
+                              await _deleteTask(task);
+                            }
+                          },
+                        ),
                       ],
                     ),
-                    
-                    if (task.description.isNotEmpty) ...[
+                    if ((task.description ?? '').isNotEmpty) ...[
                       const SizedBox(height: 8),
                       Text(
-                        task.description,
+                        task.description!,
                         style: TextStyle(
                           color: Colors.grey[700],
                           fontSize: 14,
-                          decoration: task.completed 
-                              ? TextDecoration.lineThrough 
+                          decoration: task.status == domain.TaskStatus.completed
+                              ? TextDecoration.lineThrough
                               : TextDecoration.none,
                         ),
                       ),
                     ],
-                    
                     const SizedBox(height: 12),
-                    
                     Row(
                       children: [
                         Icon(
-                          Icons.person_outline, 
-                          size: 16, 
+                          Icons.person_outline,
+                          size: 16,
                           color: Colors.grey[600],
                         ),
                         const SizedBox(width: 4),
                         Text(
-                          task.assignedTo,
+                          task.assignedTo.name,
                           style: TextStyle(
                             color: Colors.grey[600],
                             fontSize: 12,
                           ),
                         ),
-                        
                         const Spacer(),
-                        
                         Icon(
-                          Icons.calendar_today, 
-                          size: 16, 
+                          Icons.calendar_today,
+                          size: 16,
                           color: Colors.grey[600],
                         ),
                         const SizedBox(width: 4),
                         Text(
                           (task.dueDate.year == DateTime.now().year &&
-                          task.dueDate.month == DateTime.now().month &&
-                          task.dueDate.day == DateTime.now().day)
-                              ? "Today" 
+                                  task.dueDate.month == DateTime.now().month &&
+                                  task.dueDate.day == DateTime.now().day)
+                              ? "Today"
                               : DateFormat('MM/dd/yyyy').format(task.dueDate),
                           style: TextStyle(
                             color: Colors.grey[600],
@@ -490,18 +516,14 @@ class _TasksPageState extends State<TasksPage> with TickerProviderStateMixin {
                         ),
                       ],
                     ),
-                    
-                    if (!task.completed) ...[
+                    if (task.status != domain.TaskStatus.completed) ...[
                       const SizedBox(height: 12),
                       Row(
                         children: [
                           Expanded(
                             child: OutlinedButton(
-                              onPressed: () {
-                                HapticFeedback.lightImpact();
-                                setState(() {
-                                  task.completed = true;
-                                });
+                              onPressed: () async {
+                                await _markTaskDone(task);
                               },
                               style: OutlinedButton.styleFrom(
                                 padding: const EdgeInsets.symmetric(vertical: 12),
@@ -532,15 +554,12 @@ class _TasksPageState extends State<TasksPage> with TickerProviderStateMixin {
   Widget _buildAddTaskModal() {
     return Stack(
       children: [
-        // Background overlay
         GestureDetector(
           onTap: () => setState(() => _showAddTask = false),
           child: Container(
             color: Colors.black.withOpacity(0.5),
           ),
         ),
-        
-        // Modal content - Matches HomePage card style
         Center(
           child: SingleChildScrollView(
             child: Container(
@@ -569,19 +588,11 @@ class _TasksPageState extends State<TasksPage> with TickerProviderStateMixin {
                       color: AppColors.primaryBlue,
                     ),
                   ),
-                  
                   const SizedBox(height: 24),
-                  
-                  const Text(
-                    'Task title',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.primaryBlue,
-                    ),
-                  ),
+                  const Text('Task title'),
                   const SizedBox(height: 8),
                   TextField(
+                    controller: _titleController,
                     decoration: InputDecoration(
                       hintText: 'Enter task title',
                       border: OutlineInputBorder(
@@ -592,19 +603,11 @@ class _TasksPageState extends State<TasksPage> with TickerProviderStateMixin {
                         horizontal: 16, vertical: 12),
                     ),
                   ),
-                  
                   const SizedBox(height: 16),
-                  
-                  const Text(
-                    'Task description (optional)',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.primaryBlue,
-                    ),
-                  ),
+                  const Text('Task description (optional)'),
                   const SizedBox(height: 8),
                   TextField(
+                    controller: _descriptionController,
                     maxLines: 3,
                     decoration: InputDecoration(
                       hintText: 'Enter description',
@@ -616,100 +619,57 @@ class _TasksPageState extends State<TasksPage> with TickerProviderStateMixin {
                         horizontal: 16, vertical: 12),
                     ),
                   ),
-                  
                   const SizedBox(height: 16),
-                  
-                  Row(
-                    children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Priority',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold,
-                              color: AppColors.primaryBlue,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16, vertical: 8),
-                            decoration: BoxDecoration(
-                              border: Border.all(color: Colors.grey[300]!),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: const Text(
-                              'Low',
-                              style: TextStyle(fontSize: 14),
-                            ),
-                          ),
-                        ],
-                      ),
-                      
-                      const SizedBox(width: 16),
-                      
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Assigned to',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold,
-                              color: AppColors.primaryBlue,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16, vertical: 8),
-                            decoration: BoxDecoration(
-                              border: Border.all(color: Colors.grey[300]!),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: const Text(
-                              'John (You)',
-                              style: TextStyle(fontSize: 14),
-                            ),
-                          ),
-                        ],
-                      ),
-                      
-                      const SizedBox(width: 16),
-                      
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Due date',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold,
-                              color: AppColors.primaryBlue,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16, vertical: 8),
-                            decoration: BoxDecoration(
-                              border: Border.all(color: Colors.grey[300]!),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: const Text(
-                              '07/03/2025',
-                              style: TextStyle(fontSize: 14),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
+                  const Text('Priority'),
+                  const SizedBox(height: 8),
+                  DropdownButton<domain.TaskPriority>(
+                    value: _selectedPriority,
+                    items: domain.TaskPriority.values.map((priority) {
+                      return DropdownMenuItem<domain.TaskPriority>(
+                        value: priority,
+                        child: Text(priority.toString().split('.').last.capitalize()),
+                      );
+                    }).toList(),
+                    onChanged: (value) {
+                      if (value != null) {
+                        setState(() {
+                          _selectedPriority = value;
+                        });
+                      }
+                    },
                   ),
-                  
+                  const SizedBox(height: 16),
+                  const Text('Due date'),
+                  const SizedBox(height: 8),
+                  InkWell(
+                    onTap: () async {
+                      final picked = await showDatePicker(
+                        context: context,
+                        initialDate: _selectedDueDate ?? DateTime.now(),
+                        firstDate: DateTime.now(),
+                        lastDate: DateTime(2100),
+                      );
+                      if (picked != null) {
+                        setState(() {
+                          _selectedDueDate = picked;
+                        });
+                      }
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.grey[300]!),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        _selectedDueDate == null
+                            ? 'Select date'
+                            : DateFormat('MM/dd/yyyy').format(_selectedDueDate!),
+                        style: const TextStyle(fontSize: 14),
+                      ),
+                    ),
+                  ),
                   const SizedBox(height: 24),
-                  
                   Row(
                     children: [
                       Expanded(
@@ -728,15 +688,19 @@ class _TasksPageState extends State<TasksPage> with TickerProviderStateMixin {
                           ),
                         ),
                       ),
-                      
                       const SizedBox(width: 16),
-                      
                       Expanded(
                         child: ElevatedButton(
-                          onPressed: () {
-                            // Add task logic here
+                          onPressed: () async {
                             HapticFeedback.lightImpact();
-                            setState(() => _showAddTask = false);
+                            final title = _titleController.text.trim();
+                            if (title.isEmpty) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Task title is required')),
+                              );
+                              return;
+                            }
+                            await _createTask(title, _descriptionController.text.trim(), _selectedPriority, _selectedDueDate ?? DateTime.now());
                           },
                           style: ElevatedButton.styleFrom(
                             backgroundColor: AppColors.primaryOrange,
@@ -757,6 +721,116 @@ class _TasksPageState extends State<TasksPage> with TickerProviderStateMixin {
               ),
             ),
           ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildEditTaskModal() {
+    return AlertDialog(
+      title: const Text('Edit Task'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Task title'),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _editTitleController,
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+                hintText: 'Enter task title',
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Text('Task description (optional)'),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _editDescriptionController,
+              maxLines: 3,
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+                hintText: 'Enter description',
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Text('Priority'),
+            const SizedBox(height: 8),
+            DropdownButton<domain.TaskPriority>(
+              value: _editSelectedPriority,
+              items: domain.TaskPriority.values.map((priority) {
+                return DropdownMenuItem<domain.TaskPriority>(
+                  value: priority,
+                  child: Text(priority.toString().split('.').last.capitalize()),
+                );
+              }).toList(),
+              onChanged: (value) {
+                if (value != null) {
+                  setState(() {
+                    _editSelectedPriority = value;
+                  });
+                }
+              },
+            ),
+            const SizedBox(height: 16),
+            const Text('Due date'),
+            const SizedBox(height: 8),
+            InkWell(
+              onTap: () async {
+                final picked = await showDatePicker(
+                  context: context,
+                  initialDate: _editSelectedDueDate ?? DateTime.now(),
+                  firstDate: DateTime.now(),
+                  lastDate: DateTime(2100),
+                );
+                if (picked != null) {
+                  setState(() {
+                    _editSelectedDueDate = picked;
+                  });
+                }
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.grey[300]!),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  _editSelectedDueDate == null
+                      ? 'Select date'
+                      : DateFormat('MM/dd/yyyy').format(_editSelectedDueDate!),
+                  style: const TextStyle(fontSize: 14),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        ElevatedButton(
+          onPressed: () async {
+            final title = _editTitleController.text.trim();
+            if (title.isEmpty) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Task title is required')),
+              );
+              return;
+            }
+            if (_editingTask == null) return;
+            final updates = {
+              'title': title,
+              'description': _editDescriptionController.text.trim(),
+              'priority': _editSelectedPriority.toString().split('.').last,
+              'dueDate': _editSelectedDueDate?.toIso8601String(),
+            };
+            await _updateTask(_editingTask!, updates);
+          },
+          child: const Text('Save Changes'),
         ),
       ],
     );
@@ -828,8 +902,6 @@ class _TasksPageState extends State<TasksPage> with TickerProviderStateMixin {
         setState(() {
           _currentIndex = index;
         });
-
-        // Handle navigation to different pages
         _handleNavigation(index);
       },
       child: Container(
@@ -867,8 +939,7 @@ class _TasksPageState extends State<TasksPage> with TickerProviderStateMixin {
   void _handleNavigation(int index) {
     switch (index) {
       case 0:
-        Navigator.pushNamedAndRemoveUntil(
-          context, '/home', (route) => false);
+        Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
         break;
       case 1:
         // Already on Tasks
@@ -880,5 +951,73 @@ class _TasksPageState extends State<TasksPage> with TickerProviderStateMixin {
         Navigator.pushNamed(context, '/finances');
         break;
     }
+  }
+
+  Future<void> _deleteTask(domain.Task task) async {
+    final success = await _taskService.deleteTask(task.id);
+    if (success) {
+      setState(() {
+        _tasks.removeWhere((t) => t.id == task.id);
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Task deleted successfully')),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to delete task')),
+      );
+    }
+  }
+
+  Future<void> _markTaskDone(domain.Task task) async {
+    final success = await _taskService.markTaskDone(task.id);
+    if (success) {
+      setState(() {
+        task.completed = true;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Task marked as done')),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to mark task as done')),
+      );
+    }
+  }
+
+  Future<void> _createTask(String title, String description, domain.TaskPriority priority, DateTime dueDate) async {
+    final success = await _taskService.createTask(title, dueDate, priority.toString().split('.').last);
+    if (success) {
+      _loadTasks();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Task created successfully')),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to create task')),
+      );
+    }
+  }
+
+  Future<void> _updateTask(domain.Task task, Map<String, dynamic> updates) async {
+    final success = await _taskService.updateTask(task.id, updates);
+    if (success) {
+      _loadTasks();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Task updated successfully')),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to update task')),
+      );
+    }
+  }
+}
+
+// Add this extension for capitalizing strings
+extension StringCasingExtension on String {
+  String capitalize() {
+    if (isEmpty) return this;
+    return this[0].toUpperCase() + substring(1);
   }
 }

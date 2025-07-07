@@ -1,7 +1,7 @@
 /// Application constants and configuration
 class AppConstants {
   // API Configuration
-  static const String baseUrl = 'http://localhost:3000/api';
+  static const String baseUrl = 'http://localhost:5000/api';
   static const String apiVersion = 'v1';
   
   // API Endpoints

@@ -5,6 +5,7 @@ import 'screens/auth/welcome_screen.dart';
 import 'screens/auth/group_setup.dart';
 import 'screens/dashboard/home_screen.dart';
 import 'screens/task/tasks_screen.dart';
+import 'screens/auth/join_group_screen.dart';
 // Import placeholders for groups and finances screens
 import 'screens/groups/groups_screen.dart';
 import 'screens/finances/finances_screen.dart';
@@ -25,12 +26,13 @@ class MyApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
         useMaterial3: true,
       ),
-      initialRoute: '/HomePage',
+      initialRoute: '/main',
       routes: {
         '/welcome': (context) => const WelcomePage(),
         '/login': (context) => const LoginPage(),
         '/register': (context) => const RegisterPage(),
         '/group-setup': (context) => const GroupSetupPage(),
+        '/join-group': (context) => const JoinGroupScreen(),
         '/main': (context) => const HomePage(),
         '/task': (context) => const TasksPage(),
         '/groups': (context) => const GroupsPage(), // Placeholder screen

@@ -85,7 +85,7 @@ class GroupApiService {
       final response = await _apiClient.post(
         ApiRoutes.joinGroup,
         data: {
-          'groupCode': groupCode,
+          'code': groupCode,
         },
       );
 

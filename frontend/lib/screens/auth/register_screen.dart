@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../widgets/auth/animated_text_field.dart';
 import '../../widgets/auth/custom_button.dart';
+import '../../services/auth_service.dart';
 
 class RegisterPage extends StatefulWidget {
   const RegisterPage({Key? key}) : super(key: key);
@@ -231,7 +232,7 @@ class _RegisterPageState extends State<RegisterPage>
                 if (value?.isEmpty ?? true) {
                   return 'Please enter your email';
                 }
-                if (!RegExp(r'^[\\w-\\.]+@([\\w-]+\\.)+[\\w-]{2,4}\$').hasMatch(value!)) {
+                if (!RegExp(r'^[\w\.-]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value!)) {
                   return 'Please enter a valid email';
                 }
                 return null;
@@ -447,28 +448,42 @@ class _RegisterPageState extends State<RegisterPage>
 
     HapticFeedback.mediumImpact();
 
-    // Simulate registration process
-    await Future.delayed(const Duration(seconds: 2));
+    final success = await AuthService().register(
+      _nameController.text,
+      _emailController.text,
+      _passwordController.text,
+    );
 
     setState(() {
       _isLoading = false;
     });
 
     if (mounted) {
-      // Show success message
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Account created successfully!'),
-          backgroundColor: primaryOrange,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
+      if (success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Account created successfully!'),
+            backgroundColor: primaryOrange,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
           ),
-        ),
-      );
+        );
 
-      // Navigate to next screen
-      Navigator.pushReplacementNamed(context, '/group-setup');
+        Navigator.pushReplacementNamed(context, '/group-setup');
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Registration failed. Please try again.'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+        );
+      }
     }
   }
 }

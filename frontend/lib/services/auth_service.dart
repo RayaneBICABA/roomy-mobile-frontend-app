@@ -1,23 +1,64 @@
 import 'dart:async';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
-/// Service class to handle authentication logic such as login and registration.
-/// Currently simulates network calls with delays.
 class AuthService {
-  /// Simulates a login process with email and password.
-  /// Returns true if login is successful.
+  final String baseUrl = 'http://localhost:5000/api/auth';
+
   Future<bool> login(String email, String password) async {
-    // TODO: Replace with real API call
-    await Future.delayed(const Duration(seconds: 2));
-    // For demo, accept any non-empty credentials
-    return email.isNotEmpty && password.isNotEmpty;
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/login'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'email': email, 'password': password}),
+      );
+
+      print('Login response status: \${response.statusCode}');
+      print('Login response body: \${response.body}');
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final token = data['token'];
+        if (token != null) {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('auth_token', token);
+          return true;
+        }
+        return false;
+      } else {
+        return false;
+      }
+    } catch (e) {
+      print('Login error: $e');
+      return false;
+    }
   }
 
-  /// Simulates a registration process with name, email, and password.
-  /// Returns true if registration is successful.
   Future<bool> register(String name, String email, String password) async {
-    // TODO: Replace with real API call
-    await Future.delayed(const Duration(seconds: 2));
-    // For demo, accept any non-empty inputs
-    return name.isNotEmpty && email.isNotEmpty && password.isNotEmpty;
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/register'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'name': name, 'email': email, 'password': password}),
+      );
+
+      print('Register response status: \${response.statusCode}');
+      print('Register response body: \${response.body}');
+
+      if (response.statusCode == 201) {
+        return true;
+      } else {
+        return false;
+      }
+    } catch (e) {
+      print('Register error: $e');
+      return false;
+    }
+  }
+
+  Future<String?> getToken() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString('auth_token');
   }
 }

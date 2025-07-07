@@ -1,23 +1,55 @@
 import 'dart:async';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import 'auth_service.dart';
 
-/// Service class to handle group management logic such as creating and joining groups.
-/// Currently simulates network calls with delays.
 class GroupService {
-  /// Simulates creating a new group with name and optional description.
-  /// Returns true if creation is successful.
+  final String baseUrl = 'http://localhost:5000/api/groups';
+  final AuthService _authService = AuthService();
+
   Future<bool> createGroup(String groupName, String? description) async {
-    // TODO: Replace with real API call
-    await Future.delayed(const Duration(seconds: 2));
-    // For demo, accept any non-empty group name
-    return groupName.isNotEmpty;
+    try {
+      final token = await _authService.getToken();
+      final response = await http.post(
+        Uri.parse('$baseUrl/create'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({'name': groupName, 'description': description}),
+      );
+
+      if (response.statusCode == 201) {
+        return true;
+      } else {
+        return false;
+      }
+    } catch (e) {
+      print('Create group error: $e');
+      return false;
+    }
   }
 
-  /// Simulates joining an existing group with a group code.
-  /// Returns true if joining is successful.
   Future<bool> joinGroup(String groupCode) async {
-    // TODO: Replace with real API call
-    await Future.delayed(const Duration(seconds: 2));
-    // For demo, accept any non-empty group code
-    return groupCode.isNotEmpty;
+    try {
+      final token = await _authService.getToken();
+      final response = await http.post(
+        Uri.parse('$baseUrl/join'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({'code': groupCode}),
+      );
+
+      if (response.statusCode == 200) {
+        return true;
+      } else {
+        return false;
+      }
+    } catch (e) {
+      print('Join group error: $e');
+      return false;
+    }
   }
 }

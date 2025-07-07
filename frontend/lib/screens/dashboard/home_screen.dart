@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/app_colors.dart';
 
 class HomePage extends StatefulWidget {
@@ -16,9 +17,12 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   late Animation<double> _fadeAnimation;
   late Animation<double> _pulseAnimation;
 
+  String _userName = '';
+
   @override
   void initState() {
     super.initState();
+    _loadUserName();
     _fadeController = AnimationController(
       duration: const Duration(milliseconds: 800),
       vsync: this,
@@ -43,6 +47,13 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     ));
     _fadeController.forward();
     _pulseController.repeat(reverse: true);
+  }
+
+  Future<void> _loadUserName() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _userName = prefs.getString('user_name') ?? '';
+    });
   }
 
   @override
